@@ -9,46 +9,21 @@ from scipy.ndimage import gaussian_filter
 class StageBMSAGeneration:
     """
     Stage B: Motion Saliency Awareness (MSA) Generation
-    Creates spatial weight map emphasizing distortions on moving objects
+    Creates a spatial weight map (MSA map) from the residual difference map.
     """
     
-    def __init__(self, farneback_params=None):
-        """Initialize Stage B with Farneback optical flow parameters"""
-        self.farneback_params = farneback_params or {
-            'pyr_scale': 0.5,
-            'levels': 3,
-            'winsize': 15,
-            'iterations': 3,
-            'n_poly': 5,
-            'poly_sigma': 1.2,
-            'flags': cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-        }
-    
-    def compute_dense_optical_flow(self, prev_gray, curr_gray):
-        """Compute dense optical flow using Farneback algorithm"""
-        flow = cv2.calcOpticalFlowFarneback(
-            prev_gray, curr_gray, None,
-            pyr_scale=self.farneback_params['pyr_scale'],
-            levels=self.farneback_params['levels'],
-            winsize=self.farneback_params['winsize'],
-            iterations=self.farneback_params['iterations'],
-            poly_n=self.farneback_params['n_poly'],
-            poly_sigma=self.farneback_params['poly_sigma'],
-            flags=self.farneback_params['flags']
-        )
-        
-        return flow
-    
-    def calculate_motion_magnitude(self, flow):
-        """Calculate motion magnitude from optical flow vectors"""
-        u = flow[:, :, 0]
-        v = flow[:, :, 1]
-        motion_mag = np.sqrt(u**2 + v**2)
-        
-        return motion_mag
+    def __init__(self):
+        """Initialize Stage B."""
+        # No parameters needed as we are not using Farneback.
+        pass
+
     
     def calculate_difference_map(self, curr_frame, warped_prev):
-        """Calculate absolute difference between current and warped previous frame"""
+        """
+        Calculates the absolute difference between the current frame
+        and the warped (stabilized) previous frame from Stage A.
+        This is the "residual map" of true object motion.
+        """
         if len(curr_frame.shape) == 3:
             curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY).astype(float)
             prev_gray = cv2.cvtColor(warped_prev, cv2.COLOR_BGR2GRAY).astype(float)
@@ -60,47 +35,61 @@ class StageBMSAGeneration:
         diff_map_norm = diff_map / 255.0
         
         return diff_map_norm
+
     
-    def generate_msa_map(self, curr_frame, warped_prev, motion_mag, smoothing_sigma=1.0):
-        """Generate Motion Saliency Awareness (MSA) map"""
+    def generate_msa_map(self, curr_frame, warped_prev, smoothing_sigma=1.0):
+        """
+        Generate the final Motion Saliency Awareness (MSA) map.
+        This function thresholds the residual map to remove noise.
+        """
+        # 1. Get the raw residual motion (the "smart" motion)
         diff_map_norm = self.calculate_difference_map(curr_frame, warped_prev)
         
-        max_motion = np.max(motion_mag)
-        if max_motion > 1e-8:
-            motion_mag_norm = motion_mag / max_motion
-        else:
-            motion_mag_norm = motion_mag
-        
         # --- START OF FIX ---
-        # Threshold the map to remove noise.
-        # We only care about motion stronger than 10% (0.1).
-        threshold = 0.2
-        _, msa_map = cv2.threshold(diff_map_norm, threshold, 1.0, cv2.THRESH_BINARY)
+        # The old threshold was a "magic number" (0.2) and was too low,
+        # picking up background noise.
+        #
+        # We will now use Otsu's Binarization, which *automatically*
+        # finds the best possible threshold to separate the
+        # foreground (man) from the background (noise).
+
+        # 2. Convert our 0.0-1.0 float map to a 0-255 integer map (uint8)
+        #    so we can use OpenCV's thresholding tools.
+        diff_map_uint8 = (diff_map_norm * 255).astype(np.uint8)
+
+        # 3. Apply Otsu's threshold.
+        #    This is the "smart" threshold that finds the man.
+        threshold_value, msa_map_binary = cv2.threshold(
+            diff_map_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        
+        # 4. Convert back to a 0.0-1.0 float map for our calculations
+        msa_map = msa_map_binary / 255.0
         # --- END OF FIX ---
         
+        # 5. Smooth the map to avoid hard edges
         msa_map = gaussian_filter(msa_map, sigma=smoothing_sigma)
         
-        # --- START OF MISSING CODE ---
-        # This part was missing from your file
+        # 6. Normalize the final map to a 0.0 - 1.0 range
         min_msa = np.min(msa_map)
         max_msa = np.max(msa_map)
         
         if max_msa - min_msa > 1e-8:
             msa_map = (msa_map - min_msa) / (max_msa - min_msa)
         else:
+            # If map is all black, just return zeros
             msa_map = np.zeros_like(msa_map)
             
-        return msa_map  # <--- THE MISSING RETURN STATEMENT
-        # --- END OF MISSING CODE ---
+        return msa_map
     
+
     def process_frame_pair(self, prev_frame, curr_frame, warped_prev):
-        """STAGE B COMPLETE: Generate MSA map for frame pair"""
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-        curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
+        """
+        STAGE B COMPLETE: Generate MSA map for frame pair.
+        This is the only function called by main_vqa_pipeline.py.
+        """
+        # Call generate_msa_map to do all the work
+        msa_map = self.generate_msa_map(curr_frame, warped_prev)
         
-        flow = self.compute_dense_optical_flow(prev_gray, curr_gray)
-        motion_mag = self.calculate_motion_magnitude(flow)
-        diff_map = self.calculate_difference_map(curr_frame, warped_prev)
-        msa_map = self.generate_msa_map(curr_frame, warped_prev, motion_mag)
-        
-        return msa_map, motion_mag, diff_map
+        # Return *only* the msa_map, as it's all we need
+        return msa_map

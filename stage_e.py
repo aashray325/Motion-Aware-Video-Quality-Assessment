@@ -36,17 +36,18 @@ class StageEWeightedTemporalPooling:
             final_score = np.mean(frame_quality_scores)
         else:
             # Weighted average
-            final_score = np.sum(frame_quality_scores * gmi_values) / np.sum(gmi_values)
+            final_score = np.sum(frame_quality_scores * gmi_values) / (np.sum(gmi_values) + 1e-8)
         
         return final_score
     
-    def process_scores(self, frame_quality_scores, gmi_values):
+    def process_scores(self, frame_quality_scores, gmi_values, baseline_scores):
         """
         STAGE E COMPLETE: Compute final motion-aware VQA score
         
         Args:
-            frame_quality_scores: List of per-frame quality scores
+            frame_quality_scores: List of per-frame "smart" scores
             gmi_values: List of GMI values for each frame
+            baseline_scores: List of per-frame "dumb" scores
             
         Returns:
             final_score: Final motion-aware VQA score (0-1)
@@ -57,8 +58,8 @@ class StageEWeightedTemporalPooling:
         # Compute statistics
         statistics = {
             'final_score': final_score,
-            'mean_frame_quality': np.mean(frame_quality_scores),
-            'median_frame_quality': np.median(frame_quality_scores),
+            'mean_frame_quality': np.mean(baseline_scores), # <--- THIS IS NOW THE TRUE BASELINE
+            'median_frame_quality': np.median(baseline_scores),
             'mean_gmi': np.mean(gmi_values),
             'max_gmi': np.max(gmi_values),
             'min_gmi': np.min(gmi_values),

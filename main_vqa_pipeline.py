@@ -9,16 +9,17 @@ from stage_d import StageDGMICalculation
 from stage_e import StageEWeightedTemporalPooling
 
 # ===== CONFIGURATION =====
-# Corrected 16:9 aspect ratio
+# Corrected 9:16 aspect ratio
 FRAME_WIDTH = 360
-FRAME_HEIGHT = 640  # <--- FIXED
+FRAME_HEIGHT = 640
 MAX_FRAMES = None  # Set to None to process all frames
 # =========================
 
 class MotionAwareVQAPipeline:
     """Complete VQA Pipeline with all stages (A-E)"""
     
-    def __init__(self, frame_width=640, frame_height=480):
+    def __init__(self, frame_width=360, frame_height=640):
+        # NOTE: I fixed the default width/height here
         self.frame_width = frame_width
         self.frame_height = frame_height
         
@@ -55,7 +56,8 @@ class MotionAwareVQAPipeline:
         
         frame_count = 0
         H_list = []
-        frame_quality_scores = []
+        frame_quality_scores = [] # "Smart" scores
+        baseline_scores = []      # "Dumb" scores
         
         while True:
             ret_ref, ref_frame = ref_cap.read()
@@ -75,11 +77,22 @@ class MotionAwareVQAPipeline:
             H_list.append(H)
             
             # --- STAGE B ---
-            msa_map, _, _ = self.stage_b.process_frame_pair(prev_ref_frame, ref_frame, warped_prev)
+            msa_map = self.stage_b.process_frame_pair(prev_ref_frame, ref_frame, warped_prev)
             
             # --- STAGE C ---
-            frame_quality = self.stage_c.process_frame_pair(ref_frame, dist_frame, msa_map)
+            
+            # 1. Get the raw error map
+            ssim_map = self.stage_c.compute_ssim_map(ref_frame, dist_frame)
+            
+            # 2. Calculate the "dumb" baseline score (simple average)
+            baseline_frame_score = np.mean(ssim_map)
+            baseline_scores.append(baseline_frame_score)
+            
+            # 3. Calculate the "smart" motion-aware score
+            frame_quality = self.stage_c.weighted_spatial_pooling(ssim_map, msa_map)
             frame_quality_scores.append(frame_quality)
+            
+            # --- End of Stage C ---
             
             frame_count += 1
             prev_ref_frame = ref_frame.copy()
@@ -93,7 +106,9 @@ class MotionAwareVQAPipeline:
         gmi_values = self.stage_d.process_homography_list(H_list)
         
         # --- STAGE E ---
-        final_score, statistics = self.stage_e.process_scores(frame_quality_scores, gmi_values)
+        final_score, statistics = self.stage_e.process_scores(
+            frame_quality_scores, gmi_values, baseline_scores
+        )
         
         # This is the "baseline" (motion-blind) score
         baseline_score = statistics['mean_frame_quality']

@@ -6,8 +6,8 @@ import main_vqa_pipeline # Import your modified main script
 # -----------------------------------------------------------------
 DATA_DIR = "data"
 REF_VIDEO = os.path.join(DATA_DIR, "reference.mp4")
-DIST_STATIC_VIDEO = os.path.join(DATA_DIR, "distorted_static.mp4")
-DIST_MOTION_VIDEO = os.path.join(DATA_DIR, "distorted_motion.mp4")
+DIST_STATIC_VIDEO = os.path.join(DATA_DIR, "distorted_static_real1.mp4")
+DIST_MOTION_VIDEO = os.path.join(DATA_DIR, "distorted_motion_real1.mp4")
 
 def run_experiment():
     """
