@@ -6,13 +6,9 @@ import cv2
 
 
 class StageAMotionEstimation:
-    """
-    Stage A: Motion Estimation and Global Motion Compensation
-    Estimates camera motion using KLT features + Lucas-Kanade + RANSAC
-    """
     
     def __init__(self, feature_params=None, lk_params=None):
-        """Initialize Stage A with parameters"""
+        #Initialize Stage A with parameters
         self.feature_params = feature_params or {
             'maxCorners': 100,
             'qualityLevel': 0.3,
@@ -27,12 +23,12 @@ class StageAMotionEstimation:
         }
     
     def detect_klt_features(self, frame_gray):
-        """Detect KLT feature points"""
+        #Detect KLT feature points
         p0 = cv2.goodFeaturesToTrack(frame_gray, mask=None, **self.feature_params)
         return p0
     
     def estimate_feature_correspondences(self, prev_gray, curr_gray, p0):
-        """Estimate feature correspondences using Lucas-Kanade"""
+        #Estimate feature correspondences using Lucas-Kanade
         if p0 is None or len(p0) == 0:
             return None, None, None
         
@@ -43,7 +39,7 @@ class StageAMotionEstimation:
         return p1, st, err
     
     def estimate_homography_ransac(self, p0, p1, st, ransac_threshold=5.0):
-        """Estimate homography matrix using RANSAC"""
+        #Estimate homography matrix using RANSAC
         if p0 is None or p1 is None or st is None:
             return np.eye(3), None
         
@@ -61,7 +57,7 @@ class StageAMotionEstimation:
         return H, mask
     
     def apply_homography_warp(self, prev_frame, H):
-        """Apply homography transformation to warp previous frame"""
+        #Apply homography transformation to warp previous frame
         if H is None:
             return prev_frame
         
@@ -71,7 +67,6 @@ class StageAMotionEstimation:
         return warped_frame
     
     def process_frame_pair(self, prev_frame, curr_frame):
-        """STAGE A COMPLETE: Process a pair of consecutive frames"""
         prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
         

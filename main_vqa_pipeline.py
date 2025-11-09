@@ -8,18 +8,14 @@ from stage_c import StageCWeightedSpatialPooling
 from stage_d import StageDGMICalculation
 from stage_e import StageEWeightedTemporalPooling
 
-# ===== CONFIGURATION =====
-# Corrected 9:16 aspect ratio
 FRAME_WIDTH = 360
 FRAME_HEIGHT = 640
-MAX_FRAMES = None  # Set to None to process all frames
-# =========================
+MAX_FRAMES = None  
 
 class MotionAwareVQAPipeline:
     """Complete VQA Pipeline with all stages (A-E)"""
     
     def __init__(self, frame_width=360, frame_height=640):
-        # NOTE: I fixed the default width/height here
         self.frame_width = frame_width
         self.frame_height = frame_height
         
@@ -31,11 +27,11 @@ class MotionAwareVQAPipeline:
     
     def process_video_pair(self, ref_video_path, dist_video_path, max_frames=None):
         if not Path(ref_video_path).exists():
-            print(f"✗ Reference video not found: {ref_video_path}")
+            print(f"Reference video not found: {ref_video_path}")
             return None
         
         if not Path(dist_video_path).exists():
-            print(f"✗ Distorted video not found: {dist_video_path}")
+            print(f"Distorted video not found: {dist_video_path}")
             return None
         
         print(f"\nProcessing: {Path(dist_video_path).name}")
@@ -44,20 +40,20 @@ class MotionAwareVQAPipeline:
         dist_cap = cv2.VideoCapture(dist_video_path)
         
         if not ref_cap.isOpened() or not dist_cap.isOpened():
-            print("✗ Cannot open one or both video files")
+            print("Cannot open one or both video files")
             return None
         
         ret, prev_ref_frame = ref_cap.read()
         if not ret:
-            print("✗ Cannot read first frame")
+            print("Cannot read first frame")
             return None
         
         prev_ref_frame = cv2.resize(prev_ref_frame, (self.frame_width, self.frame_height))
         
         frame_count = 0
         H_list = []
-        frame_quality_scores = [] # "Smart" scores
-        baseline_scores = []      # "Dumb" scores
+        frame_quality_scores = [] 
+        baseline_scores = []      
         
         while True:
             ret_ref, ref_frame = ref_cap.read()
@@ -72,27 +68,21 @@ class MotionAwareVQAPipeline:
             ref_frame = cv2.resize(ref_frame, (self.frame_width, self.frame_height))
             dist_frame = cv2.resize(dist_frame, (self.frame_width, self.frame_height))
             
-            # --- STAGE A ---
+            # STAGE A
             H, warped_prev, _ = self.stage_a.process_frame_pair(prev_ref_frame, ref_frame)
             H_list.append(H)
             
-            # --- STAGE B ---
+            # STAGE B
             msa_map = self.stage_b.process_frame_pair(prev_ref_frame, ref_frame, warped_prev)
             
-            # --- STAGE C ---
-            
-            # 1. Get the raw error map
+            # STAGE C
             ssim_map = self.stage_c.compute_ssim_map(ref_frame, dist_frame)
             
-            # 2. Calculate the "dumb" baseline score (simple average)
             baseline_frame_score = np.mean(ssim_map)
             baseline_scores.append(baseline_frame_score)
             
-            # 3. Calculate the "smart" motion-aware score
             frame_quality = self.stage_c.weighted_spatial_pooling(ssim_map, msa_map)
             frame_quality_scores.append(frame_quality)
-            
-            # --- End of Stage C ---
             
             frame_count += 1
             prev_ref_frame = ref_frame.copy()
@@ -100,22 +90,20 @@ class MotionAwareVQAPipeline:
         ref_cap.release()
         dist_cap.release()
         
-        print(f"  ✓ Processed {frame_count} frames")
+        print(f"Processed {frame_count} frames")
         
-        # --- STAGE D ---
+        # STAGE D
         gmi_values = self.stage_d.process_homography_list(H_list)
         
-        # --- STAGE E ---
+        # STAGE E
         final_score, statistics = self.stage_e.process_scores(
             frame_quality_scores, gmi_values, baseline_scores
         )
         
-        # This is the "baseline" (motion-blind) score
         baseline_score = statistics['mean_frame_quality']
         
         return final_score, baseline_score
 
-# This function is what our experiment script will call
 def run_vqa_analysis(ref_path, dist_path):
     pipeline = MotionAwareVQAPipeline(
         frame_width=FRAME_WIDTH,
@@ -134,20 +122,17 @@ def run_vqa_analysis(ref_path, dist_path):
     else:
         return None, None
 
-# You can still run this file directly to test one video
 if __name__ == "__main__":
     print("--- Running main_vqa_pipeline.py in standalone mode ---")
     
-    # Hardcoded paths for direct testing
     REF_VIDEO = "data/reference.mp4"
     DIST_VIDEO = "data/distorted_motion.mp4"
     
     aware_score, baseline_score = run_vqa_analysis(REF_VIDEO, DIST_VIDEO)
     
     if aware_score is not None:
-        print("\n--- STANDALONE TEST RESULTS ---")
+        print("\nSTANDALONE TEST RESULTS")
         print(f"  Reference: {REF_VIDEO}")
         print(f"  Distorted: {DIST_VIDEO}")
         print(f"  Motion-Aware Score: {aware_score:.4f}")
         print(f"  Baseline Score:     {baseline_score:.4f}")
-        print("-------------------------------")
